@@ -7,8 +7,13 @@ services:
       # UpdateAvailable 恒判为 true。在 .env 里写 APP_VERSION 即可。
       args:
         APP_VERSION: ${APP_VERSION:-dev}
-    container_name: workbuddy2api
+    container_name: workbuddy2api-panel
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
     # 容器默认以 app 用户（uid 10001）运行。宿主机挂载目录属主不同会导致
     # 「写入 auths/*.json.tmp 失败 permission denied」，三种解法任选：
     #   1) 非 root · 让容器以你自己的 uid 运行（挂载目录本来就是你建的）：
@@ -23,9 +28,10 @@ services:
       # 否则下面的 ports 映射进来的连接一律被拒。
       - WB2A_LISTEN=0.0.0.0:7863
     ports:
-      - "7863:7863"
+      - "12585:7863"   # 面板/新入口
+      - "12584:7863"   # 旧 wb2api 端口，保持兼容（new-api 通道、日报脚本、历史客户端都指这里）
     volumes:
-      - ./auths:/app/auths
+      - /home/ubuntu/workbuddy2api/auths:/app/auths
       - ./data:/app/data
       # 注意：宿主机必须先有 config.json（cp config.example.json config.json）。
       # 缺失时 Docker 会把挂载点创建成目录 → 容器启动失败（程序会自动生成配置，
