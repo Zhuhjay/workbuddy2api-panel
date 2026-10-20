@@ -1,17 +1,20 @@
 services:
   wb2api:
-    # 默认使用上游预编译镜像：docker compose pull && docker compose up -d --no-build。
-    # latest 跟随 main；固定版本可用 :2026.11.1.905（镜像标签不带 v）。
-    image: ghcr.io/misakano7545/workbuddy2api-panel:latest
-    # 源码构建：注释 image，取消下面 build 段的注释，
-    # 再 git pull && docker compose up -d --build；两种方式二选一。
-    # build:
-    #   context: .
-    #   args:
-    #     APP_VERSION: ${APP_VERSION:-dev}
-    # 自建版本默认 dev；如需版本比较，在 .env 设置 APP_VERSION（例如 2026.11.3.820）。
-    container_name: workbuddy2api
+    # 本地源码构建（方案 A）：不用上游 GHCR 预编译镜像；升级走 ../scripts/upgrade.sh
+    build:
+      context: .
+      # Dockerfile 支持 ARG APP_VERSION / ARG GOPROXY：
+      # APP_VERSION 由 upgrade.sh 写入 .env；GOPROXY 走国内代理（直连官方源会卡）。
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+    container_name: workbuddy2api-panel
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
     # 容器默认以 app 用户（uid 10001）运行。宿主机挂载目录属主不同会导致
     # 「写入 auths/*.json.tmp 失败 permission denied」，三种解法任选：
     #   1) 非 root · 让容器以你自己的 uid 运行（挂载目录本来就是你建的）：
@@ -26,9 +29,10 @@ services:
       # 否则下面的 ports 映射进来的连接一律被拒。
       - WB2A_LISTEN=0.0.0.0:7863
     ports:
-      - "7863:7863"
+      - "12585:7863"   # 面板/新入口
+      - "12584:7863"   # 旧 wb2api 端口，保持兼容（new-api 通道、日报脚本、历史客户端都指这里）
     volumes:
-      - ./auths:/app/auths
+      - /home/ubuntu/workbuddy2api/auths:/app/auths
       - ./data:/app/data
       # 注意：宿主机必须先有 config.json（cp config.example.json config.json）。
       # 缺失时 Docker 会把挂载点创建成目录 → 容器启动失败（程序会自动生成配置，
