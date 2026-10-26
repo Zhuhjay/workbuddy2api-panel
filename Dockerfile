@@ -14,7 +14,9 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.appVersion=${APP_VE
 
 FROM alpine:3.20
 # python3：login.sh 的 JSON 解析 / 签到 / 落盘；bash：shell 脚本体。
-RUN apk add --no-cache wget ca-certificates tzdata python3 bash \
+# 国内镜像源：dl-cdn 在容器内常挂起（2026-10-26 实测），换 aliyun 后构建稳定且快。
+RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|' /etc/apk/repositories \
+ && apk add --no-cache wget ca-certificates tzdata python3 bash \
  && adduser -D -u 10001 app \
  && mkdir -p /app/auths /app/data \
  && chown -R app:app /app
