@@ -52,3 +52,8 @@ server.exe
 # 编译产物（16MB 误提交过一次，20261021）
 /server
 /app.toml
+
+# 升级规程产物（本地）
+upgrade-logs/
+config.json.bak-*
+data/state.json.bak-*
