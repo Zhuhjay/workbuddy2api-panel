@@ -16,11 +16,12 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-DRY_RUN=0; PUSH=1
+DRY_RUN=0; PUSH=1; DEPLOY_ONLY=0
 for a in "$@"; do
   case "$a" in
     --dry-run) DRY_RUN=1 ;;
     --no-push) PUSH=0 ;;
+    --deploy-only) DEPLOY_ONLY=1 ;;
     *) echo "未知参数: $a"; exit 2 ;;
   esac
 done
@@ -63,7 +64,7 @@ AHEAD=$(git rev-list --count "$OLD_HEAD..upstream/main" 2>/dev/null || echo 0)
 BASE=$(git merge-base HEAD upstream/main)
 AHEAD_BASE=$(git rev-list --count "$BASE..upstream/main")
 say "上游 tip=$NEW_HEAD，相对合并基点新增 $AHEAD_BASE 条"
-if [ "$AHEAD_BASE" -eq 0 ] && [ "$(git rev-list --count HEAD..upstream/main)" -eq 0 ]; then
+if [ "$DEPLOY_ONLY" = "0" ] && [ "$AHEAD_BASE" -eq 0 ] && [ "$(git rev-list --count HEAD..upstream/main)" -eq 0 ]; then
   ok "已是最新，无需升级"; exit 0
 fi
 git log --oneline "$BASE..upstream/main" | head -20
@@ -82,13 +83,15 @@ fi
 say "=== [2/7] 备份 ==="
 sudo docker tag "$IMAGE" "$ROLLBACK_TAG" || die "镜像备份失败"
 cp config.json "config.json.bak-$TS" || die "配置备份失败"
-[ -f data/state.json ] && cp data/state.json "data/state.json.bak-$TS"
+[ -f data/state.json ] && sudo cp data/state.json "data/state.json.bak-$TS"
 git tag -f "pre-upgrade-$TS" >/dev/null 2>&1 || true
 ok "镜像 → $ROLLBACK_TAG；config.json.bak-$TS；pre-upgrade-$TS"
 
 # ---------- 2. rebase ----------
 say "=== [3/7] rebase 上游 ==="
-if ! GIT_EDITOR=true git rebase upstream/main; then
+if [ "$DEPLOY_ONLY" = "1" ]; then
+  say "(--deploy-only) 跳过 rebase，直接基于当前 HEAD 部署"
+elif ! GIT_EDITOR=true git rebase upstream/main; then
   git rebase --abort 2>/dev/null || true
   die "rebase 冲突，已 abort（生产未动，HEAD 仍是 $OLD_HEAD）"
 fi
@@ -97,6 +100,13 @@ ok "rebase 完成 HEAD=$NEW_LOCAL"
 
 # ---------- 3. 构建 ----------
 say "=== [4/7] 构建 ==="
+APP_VER="$(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD)"
+if grep -q '^APP_VERSION=' .env 2>/dev/null; then
+  sed -i "s|^APP_VERSION=.*|APP_VERSION=$APP_VER|" .env
+else
+  echo "APP_VERSION=$APP_VER" >> .env
+fi
+say "APP_VERSION=$APP_VER"
 if ! sudo docker compose build; then
   git reset --hard "pre-upgrade-$TS" >/dev/null 2>&1
   die "构建失败，已回滚代码到 $OLD_HEAD（生产未动）"
