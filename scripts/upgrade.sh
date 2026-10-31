@@ -100,7 +100,7 @@ ok "rebase 完成 HEAD=$NEW_LOCAL"
 
 # ---------- 3. 构建 ----------
 say "=== [4/7] 构建 ==="
-APP_VER="$(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD)"
+APP_VER="$(git rev-parse --short HEAD)"
 if grep -q '^APP_VERSION=' .env 2>/dev/null; then
   sed -i "s|^APP_VERSION=.*|APP_VERSION=$APP_VER|" .env
 else
